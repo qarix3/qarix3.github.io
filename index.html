@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Fastpen : a client side only codepen alternative</title>
+    <meta name="description" content="Just type some html/css/js, preview the result, share the url. It's super fast and works on mobile too.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☄️</text></svg>">
+
+</head>
+
+<body>
+<noscript>Sorry, this app needs javascript to work.</noscript>
+
+<input type="radio" name="viewing" id="see-code" value="code" checked/>
+<input type="radio" name="viewing" id="see-preview" value="preview"/>
+<nav>
+    <a href="/">Fastpen</a>
+    <label for="see-code">Code</label>
+    <label for="see-preview">Preview</label>
+</nav>
+<div id="split"> 
+    <textarea
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            aria-label="Code editor" id="editor">
+<article id="follows">
+    <h1>Welcome to fastpen</h1>
+    <p>Edit HTML code on the left, preview it on the right</p>
+    <p>Share the page address to show your work</p>
+    <p>Save your best code in your favorites</p> 
+</article>
+<canvas id="canvas"></canvas>
+
+<style>
+    body{
+        overflow:hidden; 
+        height:100vh;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        font-family: sans-serif;
+        color:#333; 
+        perspective: 800px;
+    }
+    article{
+            position:relative;
+            z-index:1;
+            background:white;
+            max-width:500px;
+            padding:20px;
+            border-radius:4px;
+    }
+    h1{
+        text-align:center;
+        margin:0;
+    }
+    canvas{
+        position:absolute;
+        left:0;
+        top:0;
+    }
+</style>
+
+<script>
+    const follows = document.getElementById("follows");
+
+
+    document.addEventListener('mousemove', event=>{
+        const angleX=(event.clientX-window.innerWidth/2)/window.innerWidth*20;
+        const angleY=(window.innerHeight/2-event.clientY)/window.innerHeight*20;
+        follows.style.transform='rotateY('+angleX+'deg) rotateX('+angleY+'deg)'
+    })
+</script>
+
+<script>
+    const canvas = document.getElementById("canvas");
+    const ctx=canvas.getContext("2d",{ alpha: false });
+   
+    let maxX,maxY;
+    let points=[],
+        width=window.innerWidth,
+        height=window.innerHeight;
+    for(let i=0; i<50;i++){
+        points.push({
+            x:Math.random()*width,
+            y:Math.random()*height,
+            sx:(Math.random()-0.5)*10,
+            sy:(Math.random()-0.5)*10
+        }) 
+    }
+
+    function resetCanvasSize(){
+
+        width=window.innerWidth;
+        height=window.innerHeight;
+        canvas.width=width;
+        canvas.height=height;
+        ctx.fillStyle="#fff"
+        ctx.rect(0, 0, width, height);
+        ctx.fill(); 
+        
+    }
+    resetCanvasSize()
+    window.addEventListener("resize", resetCanvasSize);
+
+    let frame=0;
+    function drawLines(){ 
+        frame++ 
+
+        ctx.fillStyle='rgba(255,255,255,0.01)'
+        ctx.fillRect(0,0,width,height)
+
+        ctx.lineWidth=40;
+        ctx.lineCap = "round";
+
+        points.forEach((point,i)=>{
+            point.sy+=0.05
+            point.x+=point.sx
+            point.y+=point.sy
+
+            if(point.x<0){
+                point.x=0
+                point.sx*=-1
+            }
+            if(point.y<0){
+                point.y=0
+                point.sy*=-1
+            }
+            if(point.x>width){
+                point.x=width
+                point.sx*=-1
+            }
+            if(point.y>height){
+                point.y=height
+                point.sy*=-1
+            }
+
+ 
+            ctx.strokeStyle =`hsl(${(i*6524+frame/10)%360},100%,80%)` 
+            ctx.beginPath(); 
+            ctx.moveTo(point.x, point.y); 
+            ctx.lineTo(point.x+point.sx, point.y+point.sy); 
+            ctx.stroke(); 
+  
+        })
+
+        requestAnimationFrame(drawLines);
+    }
+
+    drawLines();
+</script>
+
+    
+        
+        
+        
+   
+    
+    </textarea> 
+    <iframe aria-label="Code preview" srcdoc="" id="preview"></iframe>
+</div>
+<script>
+    const editor = document.getElementById("editor");
+    const preview = document.getElementById("preview");
+
+
+    function onCodeChange() {
+        updatePreview()
+        updateURL()
+    }
+
+    function updatePreview() {
+        const newCode=`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>${editor.value}</body></html>`;
+
+        if(newCode!==preview.srcdoc) {
+            preview.srcdoc = newCode
+        }
+    }
+
+    function updateURL() {
+        const uncompressed = editor.value
+        compress(uncompressed).then(compressed => {
+            if (uncompressed == editor.value) {
+                window.location.hash = '#' + encodeURIComponent(compressed)
+            }
+        })
+    }
+
+
+    editor.addEventListener("keyup", onCodeChange);
+    editor.addEventListener("change", onCodeChange);
+
+    editor.style.width = (localStorage.getItem("ta-size") || window.innerWidth / 2) + "px";
+
+    new ResizeObserver(() => localStorage.setItem("ta-size", editor.scrollWidth)).observe(editor);
+
+    async function compress(str) {
+        // Convert the string to a byte stream.
+        const stream = new Blob([str]).stream();
+
+        // Create a compressed stream.
+        const compressedStream = stream.pipeThrough(
+            new CompressionStream("gzip")
+        )
+        const u8=await streamToBuffer(compressedStream)
+        var b64encoded = btoa(String.fromCharCode.apply(null, u8));
+
+        return b64encoded
+
+    }
+
+    function streamToBuffer(stream) {
+        const ints = [];
+        const reader=stream.getReader()
+        function readNextChunk() {
+            return reader.read().then(({ done, value }) => {  
+              if (done) {  
+                return new Uint8Array(ints) 
+              }else{
+                  ints.push(...value)
+                  return readNextChunk()
+              }
+
+            })
+        }
+        return readNextChunk() 
+ 
+    }
+
+ 
+    async function decompress(b64encoded) {
+        const compressedBytes = new Uint8Array(atob(b64encoded).split("").map(function (c) {
+            return c.charCodeAt(0);
+        }));
+        const stream = new Blob([compressedBytes]).stream(); 
+        const decompressedStream = stream.pipeThrough(
+            new DecompressionStream("gzip")
+        );
+        const u8=await streamToBuffer(decompressedStream) 
+        return new TextDecoder().decode(u8.buffer);
+    }
+
+    if (window.location.hash) {
+        editor.value = 'Decompressing...'
+        editor.disabled = true
+        const decoded = decodeURIComponent(window.location.hash.slice(1))
+        decompress(decoded).then(source => {
+            editor.disabled = false
+            editor.value = source
+            updatePreview()
+        }, error => {
+            editor.disabled = false
+            editor.value = error.message
+            updatePreview()
+            console.error(error)
+        })
+    } else {
+        updatePreview();
+    }
+
+    // Tab support
+    function supportTabIndentation(textarea) {
+        const offsetToLineAndOffset = (lines, offset) => {
+            let line = 0
+            while (offset > lines[line].length && line < lines.length - 1) {
+                offset = offset - lines[line].length - 1
+                line++
+            }
+            return {line, offset}
+        }
+        const LineAndOffsetToOffset = (lines, line, offset) => {
+            for (let i = 0; i < line; i++)
+                offset += lines[i].length + 1
+
+            return offset
+        }
+
+        textarea.addEventListener('keydown', e => {
+            if (e.key == 'Tab') {
+                e.preventDefault()
+                const lines = e.target.value.split('\n')
+
+                const selection = [offsetToLineAndOffset(lines, textarea.selectionStart),
+                    offsetToLineAndOffset(lines, textarea.selectionEnd)]
+                for (var l = selection[0].line; l <= selection[1].line; l++) {
+                    const originalLength = lines[l].length
+                    if (e.shiftKey) {
+                        lines[l] = lines[l].replace(/^ {0,4}/, '')
+                    } else {
+                        lines[l] = '    ' + lines[l]
+                    }
+                    // How much the line moved
+                    const delta = lines[l].length - originalLength
+                    // Update the user selection if it's on this line
+                    selection.forEach((sel) => {
+                        if (sel.line == l) {
+                            sel.offset = Math.max(0, sel.offset + delta)
+                        }
+                    })
+                }
+                textarea.value = lines.join('\n')
+                textarea.selectionStart = LineAndOffsetToOffset(lines, selection[0].line, selection[0].offset)
+                textarea.selectionEnd = LineAndOffsetToOffset(lines, selection[1].line, selection[1].offset)
+            }
+            if(e.key==='Enter'){
+                const {selectionStart, selectionEnd, value}= textarea
+
+                const linesBeforeCursor=value.slice(0,selectionStart).split('\n')
+                const lastLine=linesBeforeCursor[linesBeforeCursor.length-1]
+                const indentation=lastLine.match(/^\s+/)?.[0] || ''
+                
+                textarea.value=value.slice(0,selectionStart)+'\n'+indentation+value.slice(selectionEnd)
+                textarea.selectionStart=selectionStart+1+indentation.length
+                textarea.selectionEnd=textarea.selectionStart
+
+                e.preventDefault()
+            }
+        })
+    }
+
+    supportTabIndentation(document.getElementById('editor'))
+
+    // Disable ctrl S
+    document.addEventListener("keydown", event=>{
+        if(event.key=='s' && event.ctrlKey){
+            event.preventDefault()
+        }
+    })
+
+</script>
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    #split {
+        display: flex;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    #editor {
+        resize: horizontal;
+        flex-grow: 0;
+        flex-shrink: 0;
+        box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.1) inset;
+        border: none;
+        padding: 20px;
+        line-height: 20px;
+        background: #333;
+        color: white;
+        font-family: monospace;
+        max-width: 80%;
+    }
+
+    #preview {
+        flex-grow: 1;
+        flex-shrink: 1;
+        border: none;
+        box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.1) inset;
+        overflow: hidden;
+    }
+    nav{
+        display: none;
+    }
+    input[type="radio"]{
+        position: absolute;
+        left: -500px;
+    }
+       nav>*{
+           text-decoration: none;
+            flex-grow: 1;
+           text-align: center;
+            border-bottom: 4px solid transparent;
+           cursor: pointer;
+           color: white;
+        }
+       nav>*:hover{
+           background: rgba(0,0,0,0.1);
+       }
+       nav>a{
+           flex-grow: 1;
+       }
+       nav>label{
+
+            text-transform: uppercase;
+       }
+        input#see-code:checked ~ nav label[for="see-code"],
+        input#see-preview:checked ~ nav label[for="see-preview"]{
+            border-bottom-color:  yellow;
+        }
+
+    @media screen and (max-width: 800px){
+        #split{
+          height: calc(100vh - 40px);
+
+        }
+        #editor{
+            resize: none;
+            flex-grow: 1;
+            width: auto !important;
+            max-width: none;
+        }
+        nav{
+            display: flex;
+            background: #222;
+            line-height: 40px;
+            color: white;
+            font-family:sans-serif;
+            font-weight: bold;
+        }
+
+        input#see-code:checked ~ #split > #preview{
+            display: none;
+        }
+        input#see-preview:checked ~ #split >  #editor{
+            display: none;
+        }
+    }
+
+
+</style>
+</body>
+</html>
